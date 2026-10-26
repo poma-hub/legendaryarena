@@ -1,15 +1,62 @@
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
 import ArenaCard from '../components/ArenaCard.vue'
 import DifficultyLegend from '../components/DifficultyLegend.vue'
-import { arenas } from '../data/arenas'
+import { arenas, type Arena } from '../data/arenas'
+import { isInCurrentLegendaryGauntlet } from '../services/sheet'
+
+const currentLGArenas = ref<Arena[]>([])
+const currentLGLoading = ref(true)
+const currentLGError = ref('')
+
+onMounted(async () => {
+  try {
+    const statuses = await Promise.all(
+      arenas.map(async (arena) => ({
+        arena,
+        isCurrent: await isInCurrentLegendaryGauntlet(arena),
+      })),
+    )
+    currentLGArenas.value = statuses.filter(({ isCurrent }) => isCurrent).map(({ arena }) => arena)
+  } catch (error) {
+    currentLGError.value = error instanceof Error ? error.message : 'The current Legendary Gauntlet could not be loaded.'
+  } finally {
+    currentLGLoading.value = false
+  }
+})
 </script>
 
 <template>
   <div class="page-wrap">
+    <section id="current-lg" class="arena-section">
+      <div class="section-heading">
+        <div>
+          <h2>Current Legendary Gauntlet</h2>
+        </div>
+        <span v-if="!currentLGLoading && !currentLGError" class="section-count">
+          {{ currentLGArenas.length }} <span>ARENAS</span>
+        </span>
+      </div>
+      <p v-if="currentLGLoading" class="section-intro" role="status">Loading current Legendary Gauntlet...</p>
+      <p v-else-if="currentLGError" class="section-intro" role="alert">{{ currentLGError }}</p>
+      <p v-else-if="currentLGArenas.length === 0" class="section-intro" role="status">
+        No arenas are currently in the Legendary Gauntlet.
+      </p>
+      <p v-else class="section-intro"></p>
+      <div v-if="!currentLGLoading && !currentLGError && currentLGArenas.length > 0" class="arena-grid">
+        <ArenaCard
+          v-for="(arena, index) in currentLGArenas"
+          :key="arena.slug"
+          :arena="arena"
+          :index="index"
+        />
+      </div>
+    </section>
+
     <section id="arenas" class="arena-section">
       <div class="section-heading">
         <div>
-          <h2>Legendary Arenas</h2>
+          <h2>All Legendary Arenas</h2>
         </div>
         <span class="section-count">14 <span>ARENAS</span></span>
       </div>

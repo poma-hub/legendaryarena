@@ -36,6 +36,7 @@ const emit = defineEmits<{
 const iconMappings = syncPairIcons.entries as Record<string, SyncPairIconMapping>
 const iconLoadFailed = ref(false)
 const shareStatus = ref<'idle' | 'copied' | 'error'>('idle')
+const activeSourceIndex = ref(0)
 
 async function copyShareLink() {
   if (!props.shareUrl) return
@@ -54,20 +55,42 @@ function embedUrl(value: string): string {
 
   try {
     const url = new URL(value)
-    if (url.hostname === 'youtu.be') {
+    const hostname = url.hostname.toLowerCase()
+
+    if (hostname === 'youtu.be') {
       const videoId = url.pathname.slice(1)
       return videoId ? `https://www.youtube-nocookie.com/embed/${videoId}` : value
     }
 
-    if (url.hostname.endsWith('youtube.com')) {
+    if (hostname.endsWith('youtube.com')) {
       const videoId = url.searchParams.get('v') ??
         /^\/(?:embed|shorts)\/([^/?]+)/.exec(url.pathname)?.[1]
       return videoId ? `https://www.youtube-nocookie.com/embed/${videoId}` : value
     }
 
-    if (url.hostname === 'docs.google.com' && url.pathname.includes('/spreadsheets/')) {
+    if (hostname === 'docs.google.com' && url.pathname.includes('/spreadsheets/')) {
       url.pathname = url.pathname.replace(/\/edit\/?$/, '/preview')
       return url.href
+    }
+
+    if (['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com', 'mobile.twitter.com'].includes(hostname)) {
+      const tweetId = /(?:^|\/)(?:i\/web\/)?status(?:es)?\/(\d+)/.exec(url.pathname)?.[1]
+      if (tweetId) {
+        const twitterEmbed = new URL('https://platform.twitter.com/embed/Tweet.html')
+        twitterEmbed.searchParams.set('dnt', 'true')
+        twitterEmbed.searchParams.set('id', tweetId)
+        return twitterEmbed.href
+      }
+
+      const handleSegments = url.pathname.split('/').filter(Boolean)
+      const handle = handleSegments[0]
+      if (handle && !['i', 'search', 'hashtag', 'intent', 'tweets', 'settings'].includes(handle)) {
+        const followButton = new URL('https://platform.twitter.com/widgets/followButton.html')
+        followButton.searchParams.set('screen_name', handle)
+        followButton.searchParams.set('show_screen_name', 'true')
+        followButton.searchParams.set('size', 'l')
+        return followButton.href
+      }
     }
 
     return value
@@ -77,10 +100,18 @@ function embedUrl(value: string): string {
 }
 
 const gridEmbedUrl = computed(() => embedUrl(props.solo.gridUrl))
-const sourceUrl = computed(() => props.solo.sourceUrl || (
+const fallbackSourceUrl = computed(() => (
   `https://docs.google.com/spreadsheets/d/1iDfxrZ9AMQCrSaZDuT0yripAln8QH1QQP9r0g56ANhI/preview?gid=${props.gid}&range=A${props.solo.sheetRow}`
 ))
-const sourceEmbedUrl = computed(() => embedUrl(sourceUrl.value))
+const sourceUrls = computed(() => props.solo.sourceUrls.length
+  ? props.solo.sourceUrls
+  : [fallbackSourceUrl.value])
+const selectedSourceUrl = computed(() => sourceUrls.value[activeSourceIndex.value] ?? sourceUrls.value[0] ?? '')
+const sourceEmbedUrl = computed(() => embedUrl(selectedSourceUrl.value))
+
+watch(() => props.solo.runId, () => {
+  activeSourceIndex.value = 0
+})
 
 function handleRowClick(event: MouseEvent) {
   const target = event.target
@@ -228,30 +259,47 @@ function flagsFor(solo: Solo) {
     <div class="solo-source">
       <span>RECORDED BY</span>
       <strong>{{ solo.source || 'Community' }}</strong>
-      <button
-        v-if="shareUrl"
-        class="solo-share-button"
-        type="button"
-        :aria-label="`Share ${solo.name} run`"
-        @click.stop="copyShareLink"
-      >{{ shareStatus === 'copied' ? 'Link copied' : 'Share run' }}</button>
+      <div class="solo-source-actions">
+        <a
+          v-if="solo.sourceUrls.length === 1"
+          class="grid-link"
+          :href="solo.sourceUrls[0]"
+          target="_blank"
+          rel="noreferrer"
+        >Open source ↗</a>
+        <div v-else-if="solo.sourceUrls.length > 1" class="solo-source-actions">
+          <a
+            v-for="(url, index) in solo.sourceUrls"
+            :key="index"
+            class="grid-link"
+            :href="url"
+            target="_blank"
+            rel="noreferrer"
+          >Part {{ index + 1 }} ↗</a>
+        </div>
+        <a
+          v-else-if="solo.grid"
+          class="grid-link"
+          :href="`https://docs.google.com/spreadsheets/d/1iDfxrZ9AMQCrSaZDuT0yripAln8QH1QQP9r0g56ANhI/edit?gid=${gid}#gid=${gid}&range=A${solo.sheetRow}`"
+          target="_blank"
+          rel="noreferrer"
+        >Open source row ↗</a>
+        <span
+          v-if="shareUrl && (solo.sourceUrls.length || solo.grid)"
+          class="solo-source-separator"
+          aria-hidden="true"
+        ></span>
+        <button
+          v-if="shareUrl"
+          class="solo-share-button"
+          type="button"
+          :aria-label="`Share ${solo.name} run`"
+          @click.stop="copyShareLink"
+        >{{ shareStatus === 'copied' ? 'Link copied' : 'Share run' }}</button>
+      </div>
       <span v-if="shareStatus === 'error'" class="solo-share-status" role="status">
         Could not copy link
       </span>
-      <a
-        v-if="solo.sourceUrl"
-        class="grid-link"
-        :href="solo.sourceUrl"
-        target="_blank"
-        rel="noreferrer"
-      >Open source ↗</a>
-      <a
-        v-else-if="solo.grid"
-        class="grid-link"
-        :href="`https://docs.google.com/spreadsheets/d/1iDfxrZ9AMQCrSaZDuT0yripAln8QH1QQP9r0g56ANhI/edit?gid=${gid}#gid=${gid}&range=A${solo.sheetRow}`"
-        target="_blank"
-        rel="noreferrer"
-      >Open source row ↗</a>
     </div>
     <button
       class="solo-row-toggle"
@@ -289,12 +337,29 @@ function flagsFor(solo: Solo) {
     </div>
     <div class="solo-preview-panel">
       <div class="solo-preview-heading">
-        <h4>Source</h4>
-        <a :href="sourceUrl" target="_blank" rel="noreferrer">Open in new tab ↗</a>
+        <div class="source-heading-label">
+          <h4>Source</h4>
+          <div v-if="sourceUrls.length > 1" class="source-part-tabs" role="tablist" aria-label="Source parts">
+            <button
+              v-for="(url, index) in sourceUrls"
+              :key="url"
+              class="source-part-tab"
+              :class="{ 'source-part-tab-active': activeSourceIndex === index }"
+              type="button"
+              role="tab"
+              :aria-selected="activeSourceIndex === index"
+              :aria-controls="`source-panel-${solo.id}`"
+              @click="activeSourceIndex = index"
+            >Part {{ index + 1 }}</button>
+          </div>
+        </div>
+        <a :href="selectedSourceUrl" target="_blank" rel="noreferrer">Open in new tab ↗</a>
       </div>
       <iframe
+        :id="`source-panel-${solo.id}`"
         :src="sourceEmbedUrl"
-        :title="`${solo.name} source`"
+        :title="`${solo.name} source part ${activeSourceIndex + 1}`"
+        role="tabpanel"
         loading="lazy"
         referrerpolicy="strict-origin-when-cross-origin"
         allowfullscreen

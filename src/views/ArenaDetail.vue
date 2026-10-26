@@ -199,7 +199,7 @@ watch(() => props.arena.gid, () => {
         <span v-if="loading">LOADING RUNS…</span>
         <span v-else-if="error">COULD NOT LOAD RUNS</span>
         <span v-else>{{ filteredSolos.length.toLocaleString('en-US') }} RUN{{ filteredSolos.length === 1 ? '' : 'S' }} FOUND</span>
-        <span v-if="sheet && !loading" class="submission-count">{{ sheet.solos.length.toLocaleString('en-US') }} SUBMISSIONS IN ARCHIVE</span>
+        <span v-if="sheet && !loading" class="submission-count">{{ sheet.solos.length.toLocaleString('en-US') }} RUNS IN ARCHIVE</span>
       </div>
 
       <div v-if="loading" class="state-panel">
