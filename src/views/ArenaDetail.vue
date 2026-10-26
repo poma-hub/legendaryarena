@@ -4,9 +4,11 @@ import DifficultyLegend from '../components/DifficultyLegend.vue'
 import SoloRow from '../components/SoloRow.vue'
 import type { Arena } from '../data/arenas'
 import { difficultyOptions } from '../data/markers'
+import { appPath } from '../routes'
 import { loadArenaSheet, type ArenaSheet } from '../services/sheet'
 
 const props = defineProps<{ arena: Arena }>()
+const indexPath = appPath()
 const sheet = ref<ArenaSheet | null>(null)
 const loading = ref(true)
 const error = ref('')
@@ -57,7 +59,7 @@ watch(() => props.arena.gid, fetchSheet)
 
 <template>
   <div class="page-wrap detail-wrap">
-    <a class="back-link" href="/legendaryarena"><span aria-hidden="true">←</span> All arenas</a>
+    <a class="back-link" :href="indexPath"><span aria-hidden="true">←</span> All arenas</a>
 
     <section class="detail-hero" :style="{ '--arena-color': arena.color }">
       <div class="detail-copy">

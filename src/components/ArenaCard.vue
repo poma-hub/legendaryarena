@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import type { Arena } from '../data/arenas'
+import { appPath } from '../routes'
 
-defineProps<{ arena: Arena; index: number }>()
+const props = defineProps<{ arena: Arena; index: number }>()
 </script>
 
 <template>
-  <a class="arena-card" :href="`/legendaryarena/${arena.slug}`" :style="{ '--arena-color': arena.color }">
+  <a class="arena-card" :href="appPath(props.arena.slug)" :style="{ '--arena-color': arena.color }">
     <div class="arena-card-top">
       <span class="arena-number">{{ String(index + 1).padStart(2, '0') }}</span>
     </div>

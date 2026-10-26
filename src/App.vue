@@ -3,16 +3,17 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import ArenaDetail from './views/ArenaDetail.vue'
 import ArenaIndex from './views/ArenaIndex.vue'
 import { arenas } from './data/arenas'
+import { appPath, getRoutePath, isAppPath } from './routes'
 
-const currentPath = ref(window.location.pathname)
+const currentPath = ref(getRoutePath(window.location.pathname))
 const activeArena = computed(() => {
   const slug = currentPath.value.split('/').filter(Boolean).at(-1)
   return arenas.find((arena) => arena.slug === slug)
 })
-const isIndex = computed(() => currentPath.value === '/legendaryarena' || currentPath.value === '/')
+const isIndex = computed(() => currentPath.value === '/')
 
 function syncPath() {
-  currentPath.value = window.location.pathname
+  currentPath.value = getRoutePath(window.location.pathname)
 }
 
 function handleNavigation(event: MouseEvent) {
@@ -34,11 +35,7 @@ function handleNavigation(event: MouseEvent) {
   const destination = new URL(link.href)
   if (
     destination.origin !== window.location.origin ||
-    !(
-      destination.pathname === '/' ||
-      destination.pathname === '/legendaryarena' ||
-      destination.pathname.startsWith('/legendaryarena/')
-    )
+    !isAppPath(destination.pathname)
   ) {
     return
   }
@@ -52,8 +49,8 @@ function handleNavigation(event: MouseEvent) {
 }
 
 onMounted(() => {
-  if (window.location.pathname === '/') {
-    window.history.replaceState(null, '', '/legendaryarena')
+  if (window.location.pathname === '/' && import.meta.env.BASE_URL !== '/') {
+    window.history.replaceState(null, '', appPath())
     syncPath()
   }
   window.addEventListener('popstate', syncPath)
@@ -66,7 +63,7 @@ onUnmounted(() => window.removeEventListener('popstate', syncPath))
   <div class="site-shell" @click="handleNavigation">
     <header class="topbar">
       <nav class="topnav" aria-label="Main navigation">
-        <a class="topnav-link active" href="/legendaryarena">Arena index</a>
+        <a class="topnav-link active" :href="appPath()">Arena index</a>
         <a class="topnav-link" href="https://docs.google.com/spreadsheets/d/1iDfxrZ9AMQCrSaZDuT0yripAln8QH1QQP9r0g56ANhI" target="_blank" rel="noreferrer">
           Source sheet <span aria-hidden="true">↗</span>
         </a>
@@ -82,7 +79,7 @@ onUnmounted(() => window.removeEventListener('popstate', syncPath))
       <section v-else class="not-found">
         <span class="eyebrow">404 · ARENA NOT FOUND</span>
         <h1>That arena isn't in the archive.</h1>
-        <a class="button-primary" href="/legendaryarena">Back to arena index <span aria-hidden="true">→</span></a>
+        <a class="button-primary" :href="appPath()">Back to arena index <span aria-hidden="true">→</span></a>
       </section>
     </main>
   </div>
