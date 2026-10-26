@@ -1,0 +1,27 @@
+<script setup lang="ts">
+import type { Arena } from '../data/arenas'
+
+defineProps<{ arena: Arena; index: number }>()
+</script>
+
+<template>
+  <a class="arena-card" :href="`/legendaryarena/${arena.slug}`" :style="{ '--arena-color': arena.color }">
+    <div class="arena-card-top">
+      <span class="arena-number">{{ String(index + 1).padStart(2, '0') }}</span>
+    </div>
+    <div class="arena-art">
+      <div class="art-halo"></div>
+      <img
+        :src="`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${arena.pokemonId}.png`"
+        :alt="`${arena.name} official artwork`"
+        loading="lazy"
+      />
+    </div>
+    <div class="arena-card-bottom">
+      <div>
+        <h3>{{ arena.name }}</h3>
+      </div>
+      <span class="card-arrow" aria-hidden="true">↗</span>
+    </div>
+  </a>
+</template>
