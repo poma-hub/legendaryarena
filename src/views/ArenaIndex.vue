@@ -9,7 +9,7 @@ import { arenas } from '../data/arenas'
     <section id="arenas" class="arena-section">
       <div class="section-heading">
         <div>
-          <h2>Legendary arenas</h2>
+          <h2>Legendary Arenas</h2>
         </div>
         <span class="section-count">14 <span>ARENAS</span></span>
       </div>
