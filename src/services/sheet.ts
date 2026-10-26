@@ -20,6 +20,7 @@ interface SheetResponse {
 
 export interface Solo {
   id: number
+  runId: string
   sheetRow: number
   name: string
   japaneseName: string
@@ -37,6 +38,32 @@ export interface Solo {
 export interface ArenaSheet {
   uniqueCount: number
   solos: Solo[]
+}
+
+function createRunId(solo: Omit<Solo, 'id' | 'runId' | 'sheetRow'>): string {
+  const identity = JSON.stringify([
+    solo.name.normalize('NFKC').trim().toLocaleLowerCase('en-US'),
+    solo.japaneseName.normalize('NFKC').trim(),
+    solo.upgrades.normalize('NFKC').trim(),
+    solo.level.normalize('NFKC').trim(),
+    solo.grid.normalize('NFKC').trim(),
+    solo.luckySkill.normalize('NFKC').trim(),
+    solo.source.normalize('NFKC').trim(),
+    solo.gridUrl.trim(),
+    solo.sourceUrl.trim(),
+    solo.difficulties,
+    solo.advice.normalize('NFKC').trim(),
+  ])
+
+  function hash(seed: number): string {
+    let value = seed
+    for (let index = 0; index < identity.length; index++) {
+      value = Math.imul(value ^ identity.charCodeAt(index), 0x01000193)
+    }
+    return (value >>> 0).toString(16).padStart(8, '0')
+  }
+
+  return `run-${hash(0x811c9dc5)}${hash(0xdeadbeef)}`
 }
 
 function cellValue(row: SheetRow, index: number): string {
@@ -91,7 +118,7 @@ export async function loadArenaSheet(arena: Arena): Promise<ArenaSheet> {
     const name = cellValue(row, 1)
     if (!name || name === 'Sync Pair') return []
 
-    return [{
+    const solo = {
       id: index,
       sheetRow: headerIndex + 3 + index,
       name,
@@ -106,7 +133,9 @@ export async function loadArenaSheet(arena: Arena): Promise<ArenaSheet> {
       difficulties: ['🔰', '✔️', '⚠️', '⛔', '🚫', '🕗', '🔁', '⚙️', '🪽', '💦', '💤', '🧊', '❓', '⚡', '🥠']
         .filter((marker) => cellValue(row, 8).includes(marker)),
       advice: cellValue(row, 9),
-    }]
+    }
+
+    return [{ ...solo, runId: createRunId(solo) }]
   })
 
   return {

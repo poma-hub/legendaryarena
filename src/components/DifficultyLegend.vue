@@ -6,7 +6,6 @@ import { difficultyOptions, flagOptions } from '../data/markers'
   <section class="legend-panel" aria-labelledby="legend-title">
     <div class="legend-heading">
       <span class="eyebrow">QUICK REFERENCE</span>
-      <h2 id="legend-title">Read the run markers</h2>
     </div>
     <div class="legend-content">
       <div class="legend-group">

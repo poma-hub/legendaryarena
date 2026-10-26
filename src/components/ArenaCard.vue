@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Arena } from '../data/arenas'
+import { getArenaIcon, type Arena } from '../data/arenas'
 import { appPath } from '../routes'
 
 const props = defineProps<{ arena: Arena; index: number }>()
@@ -13,8 +13,8 @@ const props = defineProps<{ arena: Arena; index: number }>()
     <div class="arena-art">
       <div class="art-halo"></div>
       <img
-        :src="`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${arena.pokemonId}.png`"
-        :alt="`${arena.name} official artwork`"
+        :src="getArenaIcon(arena)"
+        :alt="`${arena.name} icon`"
         loading="lazy"
       />
     </div>

@@ -6,6 +6,19 @@ export interface Arena {
   color: string
 }
 
+const arenaIcons = import.meta.glob<string>('../assets/la_icons/*.png', {
+  eager: true,
+  import: 'default',
+  query: '?url',
+})
+
+export function getArenaIcon(arena: Arena): string {
+  const iconPath = `../assets/la_icons/${arena.slug.replace(/-/g, '_')}.png`
+  const icon = arenaIcons[iconPath]
+  if (!icon) throw new Error(`Missing arena icon: ${iconPath}`)
+  return icon
+}
+
 export const arenas: Arena[] = [
   { name: 'Azelf', slug: 'azelf', gid: '264507450', pokemonId: 482, color: '#bc8cff' },
   { name: 'Cobalion', slug: 'cobalion', gid: '1922313200', pokemonId: 638, color: '#a6c5cc' },

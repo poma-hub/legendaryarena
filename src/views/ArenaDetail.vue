@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import DifficultyLegend from '../components/DifficultyLegend.vue'
 import SoloRow from '../components/SoloRow.vue'
-import type { Arena } from '../data/arenas'
+import { getArenaIcon, type Arena } from '../data/arenas'
 import { difficultyOptions } from '../data/markers'
 import { appPath } from '../routes'
-import { loadArenaSheet, type ArenaSheet } from '../services/sheet'
+import { loadArenaSheet, type ArenaSheet, type Solo } from '../services/sheet'
 
 const props = defineProps<{ arena: Arena }>()
 const indexPath = appPath()
@@ -15,6 +15,8 @@ const error = ref('')
 const search = ref('')
 const selectedDifficulties = ref<string[]>([])
 const showLegend = ref(false)
+const expandedSoloGroups = ref<Set<string>>(new Set())
+const expandedSoloPreview = ref<number | null>(null)
 const notRatedFilter = 'not-rated'
 
 const filteredSolos = computed(() => {
@@ -35,11 +37,52 @@ const filteredSolos = computed(() => {
   })
 })
 
+const groupedSolos = computed(() => {
+  const groups = new Map<string, Solo[]>()
+
+  for (const solo of filteredSolos.value) {
+    const group = groups.get(solo.name)
+    if (group) group.push(solo)
+    else groups.set(solo.name, [solo])
+  }
+
+  return Array.from(groups, ([name, solos]) => ({ name, solos }))
+})
+
+function shareUrlFor(solo: Solo): string {
+  const url = new URL(appPath(props.arena.slug), window.location.origin)
+  url.searchParams.set('runId', solo.runId)
+  return url.href
+}
+
+async function openSharedRun() {
+  if (!sheet.value) return
+
+  const params = new URLSearchParams(window.location.search)
+  const runId = params.get('runId')
+  if (!runId) return
+  const target = sheet.value.solos.find((solo) => solo.runId === runId)
+  if (!target) return
+
+  search.value = target.name
+  selectedDifficulties.value = []
+  const firstRunId = sheet.value.solos.find((solo) => solo.name === target.name)?.runId
+  expandedSoloGroups.value = firstRunId !== target.runId ? new Set([target.name]) : new Set()
+  expandedSoloPreview.value = target.id
+
+  await nextTick()
+  document.getElementById(`solo-row-${target.id}`)?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'center',
+  })
+}
+
 async function fetchSheet() {
   loading.value = true
   error.value = ''
   try {
     sheet.value = await loadArenaSheet(props.arena)
+    await openSharedRun()
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'The arena data could not be loaded.'
   } finally {
@@ -53,8 +96,23 @@ function toggleDifficulty(icon: string) {
     : [...selectedDifficulties.value, icon]
 }
 
+function toggleSoloGroup(name: string) {
+  const expanded = new Set(expandedSoloGroups.value)
+  if (expanded.has(name)) expanded.delete(name)
+  else expanded.add(name)
+  expandedSoloGroups.value = expanded
+}
+
+function toggleSoloPreview(id: number) {
+  expandedSoloPreview.value = expandedSoloPreview.value === id ? null : id
+}
+
 onMounted(fetchSheet)
-watch(() => props.arena.gid, fetchSheet)
+watch(() => props.arena.gid, () => {
+  expandedSoloGroups.value = new Set()
+  expandedSoloPreview.value = null
+  fetchSheet()
+})
 </script>
 
 <template>
@@ -75,8 +133,8 @@ watch(() => props.arena.gid, fetchSheet)
       <div class="detail-art">
         <div class="detail-art-halo"></div>
         <img
-          :src="`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${arena.pokemonId}.png`"
-          :alt="`${arena.name} official artwork`"
+          :src="getArenaIcon(arena)"
+          :alt="`${arena.name} icon`"
         />
       </div>
       <span class="detail-number">LA / {{ String(arena.pokemonId).padStart(3, '0') }}</span>
@@ -156,7 +214,35 @@ watch(() => props.arena.gid, fetchSheet)
         <button class="button-outline" type="button" @click="fetchSheet">Try again <span aria-hidden="true">↻</span></button>
       </div>
       <div v-else-if="filteredSolos.length" class="solo-list">
-        <SoloRow v-for="solo in filteredSolos" :key="solo.id" :solo="solo" :color="arena.color" :gid="arena.gid" />
+        <section v-for="group in groupedSolos" :key="group.name" class="solo-group">
+          <SoloRow
+            :solo="group.solos[0]!"
+            :color="arena.color"
+            :gid="arena.gid"
+            :share-url="shareUrlFor(group.solos[0]!)"
+            :expandable="group.solos.length > 1"
+            :expanded="expandedSoloGroups.has(group.name)"
+            :preview-expanded="expandedSoloPreview === group.solos[0]!.id"
+            @toggle-expanded="toggleSoloGroup(group.name)"
+            @toggle-preview="toggleSoloPreview(group.solos[0]!.id)"
+          />
+          <div
+            v-if="expandedSoloGroups.has(group.name)"
+            :id="`solo-group-${group.solos[0]?.id}-more`"
+            class="solo-group-rows"
+          >
+            <SoloRow
+              v-for="solo in group.solos.slice(1)"
+              :key="solo.id"
+              :solo="solo"
+              :color="arena.color"
+              :gid="arena.gid"
+              :share-url="shareUrlFor(solo)"
+              :preview-expanded="expandedSoloPreview === solo.id"
+              @toggle-preview="toggleSoloPreview(solo.id)"
+            />
+          </div>
+        </section>
       </div>
       <div v-else class="state-panel empty-panel">
         <span class="state-icon">⌕</span>

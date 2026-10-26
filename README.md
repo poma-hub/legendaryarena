@@ -40,3 +40,37 @@ npm run dev
 ```sh
 npm run build
 ```
+
+The production build also generates a static entry page for each arena route.
+These pages are required for direct links to work on GitHub Pages, which does
+not automatically route unknown paths to the app's `index.html`.
+
+### Sync-pair icons
+
+Update character-to-icon mappings from the public Google Sheet and
+SyncPairsTracker data:
+
+```sh
+npm run sync:icons
+```
+
+Preview new mappings without writing the JSON file:
+
+```sh
+npm run sync:icons -- --dry-run
+```
+
+### Sync-pair icons
+
+Update the character-to-icon mappings from the public Google Sheet and
+SyncPairsTracker data:
+
+```sh
+npm run sync:icons
+```
+
+Preview new mappings without writing the JSON file:
+
+```sh
+npm run sync:icons -- --dry-run
+```
