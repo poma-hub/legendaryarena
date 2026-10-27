@@ -1,6 +1,7 @@
-import type { Arena } from '../data/arenas'
+import { arenas, type Arena } from '../data/arenas'
 
 const spreadsheetId = '1iDfxrZ9AMQCrSaZDuT0yripAln8QH1QQP9r0g56ANhI'
+const navigationSheetGid = '2047631707'
 
 interface SheetCell {
   v?: unknown
@@ -39,6 +40,13 @@ export interface Solo {
 export interface ArenaSheet {
   uniqueCount: number
   solos: Solo[]
+}
+
+export interface ArenaNavigationRow {
+  name: string
+  japaneseName: string
+  soloCount: number
+  upgrades: Record<string, string>
 }
 
 function createRunId(solo: Omit<Solo, 'id' | 'runId' | 'sheetRow'>): string {
@@ -107,33 +115,33 @@ function parseResponse(text: string): SheetResponse {
   return JSON.parse(text.slice(jsonStart, jsonEnd + 1)) as SheetResponse
 }
 
-async function loadSheetRows(arena: Arena, range?: string): Promise<SheetRow[]> {
-  const params = new URLSearchParams({ tqx: 'out:json', gid: arena.gid })
+async function loadSheetRows(gid: string, sheetName: string, range?: string): Promise<SheetRow[]> {
+  const params = new URLSearchParams({ tqx: 'out:json', gid })
   if (range) params.set('range', range)
 
   const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?${params}`
   const response = await fetch(url)
   if (!response.ok) {
-    throw new Error(`The ${arena.name} sheet could not be loaded (HTTP ${response.status}).`)
+    throw new Error(`The ${sheetName} sheet could not be loaded (HTTP ${response.status}).`)
   }
 
   const payload = parseResponse(await response.text())
   if (payload.status !== 'ok' || !payload.table) {
     const reason = payload.errors?.[0]?.message
-    throw new Error(reason || `The ${arena.name} sheet is unavailable.`)
+    throw new Error(reason || `The ${sheetName} sheet is unavailable.`)
   }
 
   return payload.table.rows
 }
 
 export async function isInCurrentLegendaryGauntlet(arena: Arena): Promise<boolean> {
-  const rows = await loadSheetRows(arena, 'I2')
+  const rows = await loadSheetRows(arena.gid, arena.name, 'I2')
   const value = rows[0]
   return value ? cellValue(value, 0) === 'In Current LG' : false
 }
 
 export async function loadArenaSheet(arena: Arena): Promise<ArenaSheet> {
-  const rows = await loadSheetRows(arena)
+  const rows = await loadSheetRows(arena.gid, arena.name)
   const countRow = rows.find((row) => cellValue(row, 1).includes('Unique Solo Count'))
   const uniqueCount = Number.parseInt(cellValue(countRow ?? { c: [] }, 2), 10)
   const headerIndex = rows.findIndex((row) => cellValue(row, 1) === 'Sync Pair')
@@ -171,4 +179,50 @@ export async function loadArenaSheet(arena: Arena): Promise<ArenaSheet> {
     uniqueCount: Number.isNaN(uniqueCount) ? new Set(solos.map((solo) => solo.name)).size : uniqueCount,
     solos,
   }
+}
+
+let arenaNavigationPromise: Promise<ArenaNavigationRow[]> | undefined
+
+export function loadArenaNavigation(): Promise<ArenaNavigationRow[]> {
+  if (!arenaNavigationPromise) {
+    arenaNavigationPromise = fetchArenaNavigation().catch((error: unknown) => {
+      arenaNavigationPromise = undefined
+      throw error
+    })
+  }
+  return arenaNavigationPromise
+}
+
+async function fetchArenaNavigation(): Promise<ArenaNavigationRow[]> {
+  const rows = await loadSheetRows(navigationSheetGid, 'sync pair navigation')
+  const headerRow = rows[0]
+  if (!headerRow) throw new Error('The sync pair navigation sheet is empty.')
+
+  const arenaColumnIndexes = arenas.map((arena) => {
+    const columnIndex = headerRow.c.findIndex((cell) =>
+      (cell?.f ?? cell?.v ?? '').toString().trim().split(/\r?\n/)[0] === arena.name,
+    )
+    if (columnIndex < 0) {
+      throw new Error(`The sync pair navigation sheet is missing the ${arena.name} column.`)
+    }
+    return columnIndex
+  })
+
+  return rows.flatMap((row) => {
+    const name = cellValue(row, 1)
+    const japaneseName = cellValue(row, 2).replace(/\s+/g, ' ').trim()
+    const soloCount = Number.parseInt(cellValue(row, 17), 10)
+    if (!name || !japaneseName || !Number.isInteger(soloCount) || soloCount < 0 || soloCount > arenas.length) {
+      return []
+    }
+
+    return [{
+      name,
+      japaneseName,
+      soloCount,
+      upgrades: Object.fromEntries(
+        arenas.map((arena, index) => [arena.slug, cellValue(row, arenaColumnIndexes[index] ?? -1)]),
+      ),
+    }]
+  })
 }

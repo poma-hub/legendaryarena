@@ -80,6 +80,7 @@ async function openSharedRun() {
 async function fetchSheet() {
   loading.value = true
   error.value = ''
+  search.value = new URLSearchParams(window.location.search).get('character')?.trim() ?? ''
   try {
     sheet.value = await loadArenaSheet(props.arena)
     await openSharedRun()
