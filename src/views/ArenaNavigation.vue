@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { arenas, getArenaIcon, type Arena } from '../data/arenas'
 import { getSyncPairIconUrl } from '../data/sync-pair-icons'
+import { locale, t } from '../i18n'
 import { appPath } from '../routes'
 import {
   isInCurrentLegendaryGauntlet,
@@ -11,17 +12,20 @@ import {
 
 type SortMode = 'count' | 'name' | 'japanese' | 'investment'
 
-const props = withDefaults(defineProps<{ gauntletOnly?: boolean }>(), {
-  gauntletOnly: false,
-})
-
-interface DisplayNavigationRow extends ArenaNavigationRow {
+interface IndexedNavigationRow extends ArenaNavigationRow {
   iconUrl: string
-  displayedSoloCount: number
+  gauntletSoloCount: number
+  normalizedName: string
+  normalizedJapaneseName: string
 }
 
+const gauntletOnly = ref(window.localStorage.getItem('legendary-arena-current-gauntlet-only') !== 'false')
+const gauntletAvailable = ref(true)
 const rows = ref<ArenaNavigationRow[]>([])
-const displayedArenas = ref<Arena[]>(props.gauntletOnly ? [] : arenas)
+const currentGauntletArenas = ref<Arena[]>([])
+const displayedArenas = computed(() =>
+  gauntletOnly.value ? currentGauntletArenas.value : arenas,
+)
 const failedIcons = ref(new Set<string>())
 const loading = ref(true)
 const error = ref('')
@@ -30,23 +34,25 @@ const sortMode = ref<SortMode>('count')
 const investmentArena = ref(arenas[0]?.slug ?? '')
 const investmentDirection = ref<'least' | 'most'>('least')
 
-function soloCountFor(row: ArenaNavigationRow): number {
-  if (!props.gauntletOnly) return row.soloCount
-  return displayedArenas.value.filter((arena) => row.upgrades[arena.slug]).length
+function soloCountFor(row: IndexedNavigationRow): number {
+  return gauntletOnly.value ? row.gauntletSoloCount : row.soloCount
 }
 
-const displayRows = computed<DisplayNavigationRow[]>(() => {
-  const query = search.value.trim().normalize('NFKC').toLocaleLowerCase()
-  const filtered = rows.value.filter((row) =>
-    (soloCountFor(row) > 0 || !props.gauntletOnly) &&
-    (
-      !query ||
-      row.name.normalize('NFKC').toLocaleLowerCase().includes(query) ||
-      row.japaneseName.normalize('NFKC').toLocaleLowerCase().includes(query)
-    ),
-  )
+const indexedRows = computed<IndexedNavigationRow[]>(() =>
+  rows.value.map((row) => ({
+    ...row,
+    iconUrl: getSyncPairIconUrl({ name: row.name, upgrades: '1' }),
+    gauntletSoloCount: currentGauntletArenas.value
+      .filter((arena) => row.upgrades[arena.slug]).length,
+    normalizedName: row.name.normalize('NFKC').toLocaleLowerCase(),
+    normalizedJapaneseName: row.japaneseName.normalize('NFKC').toLocaleLowerCase(),
+  })),
+)
 
-  filtered.sort((left, right) => {
+const sortedRows = computed(() => {
+  const sorted = [...indexedRows.value]
+
+  sorted.sort((left, right) => {
     if (sortMode.value === 'name') {
       return left.name.localeCompare(right.name, 'en', { sensitivity: 'base' })
     }
@@ -69,11 +75,19 @@ const displayRows = computed<DisplayNavigationRow[]>(() => {
       left.name.localeCompare(right.name, 'en', { sensitivity: 'base' })
   })
 
-  return filtered.map((row) => ({
-    ...row,
-    iconUrl: getSyncPairIconUrl({ name: row.name, upgrades: '5 EX' }),
-    displayedSoloCount: soloCountFor(row),
-  }))
+  return sorted
+})
+
+const displayRows = computed(() => {
+  const query = search.value.trim().normalize('NFKC').toLocaleLowerCase()
+  return sortedRows.value.filter((row) =>
+    (soloCountFor(row) > 0 || !gauntletOnly.value) &&
+    (
+      !query ||
+      row.normalizedName.includes(query) ||
+      row.normalizedJapaneseName.includes(query)
+    ),
+  )
 })
 
 function investmentScore(value: string): number | null {
@@ -117,28 +131,35 @@ function markIconFailed(name: string) {
   failedIcons.value = new Set(failedIcons.value).add(name)
 }
 
+watch(gauntletOnly, (showGauntlet) => {
+  window.localStorage.setItem('legendary-arena-current-gauntlet-only', String(showGauntlet))
+  investmentArena.value = showGauntlet
+    ? currentGauntletArenas.value[0]?.slug ?? ''
+    : arenas[0]?.slug ?? ''
+})
+
 async function fetchNavigation() {
   loading.value = true
   error.value = ''
   try {
     const [navigationRows, currentArenas] = await Promise.all([
       loadArenaNavigation(),
-      props.gauntletOnly
-        ? Promise.all(arenas.map(async (arena) => ({
-          arena,
-          isCurrent: await isInCurrentLegendaryGauntlet(arena),
-        })))
-        : Promise.resolve([]),
+      Promise.all(arenas.map(async (arena) => ({
+        arena,
+        isCurrent: await isInCurrentLegendaryGauntlet(arena),
+      }))),
     ])
-    if (props.gauntletOnly) {
-      displayedArenas.value = currentArenas
-        .filter(({ isCurrent }) => isCurrent)
-        .map(({ arena }) => arena)
-      investmentArena.value = displayedArenas.value[0]?.slug ?? ''
-    }
+    currentGauntletArenas.value = currentArenas
+      .filter(({ isCurrent }) => isCurrent)
+      .map(({ arena }) => arena)
+    gauntletAvailable.value = currentGauntletArenas.value.length > 0
+    if (!gauntletAvailable.value) gauntletOnly.value = false
+    investmentArena.value = gauntletOnly.value
+      ? currentGauntletArenas.value[0]?.slug ?? ''
+      : arenas[0]?.slug ?? ''
     rows.value = navigationRows
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : 'The sync pair navigation could not be loaded.'
+    error.value = cause instanceof Error ? cause.message : t('navigationLoadError')
   } finally {
     loading.value = false
   }
@@ -149,89 +170,101 @@ onMounted(fetchNavigation)
 
 <template>
   <section
-    :id="gauntletOnly ? 'current-lg' : 'arenas'"
+    id="arenas"
     class="arena-section navigation-section"
     :class="{ 'navigation-section-gauntlet': gauntletOnly }"
   >
     <div class="section-heading">
-      <div>
-        <h2>{{ gauntletOnly ? 'Current Legendary Gauntlet' : 'Navigation' }}</h2>
-      </div>
-      <span v-if="!loading && !error" class="section-count">
-        <template v-if="gauntletOnly">
-          {{ displayedArenas.length }} <span>ARENAS</span>
-        </template>
-        <template v-else>
-          {{ displayRows.length }} <span>OF {{ rows.length }} PAIRS</span>
-        </template>
-      </span>
+      <h2>{{ gauntletOnly ? t('currentGauntlet') : t('navigation') }}</h2>
+    </div>
+
+    <div class="arena-mode-switch" role="group" :aria-label="t('arenaNavigationMode')">
+      <span :class="{ 'arena-mode-label-active': !gauntletOnly }">{{ t('allArenas') }}</span>
+      <label class="mode-switch">
+        <input
+          v-model="gauntletOnly"
+          type="checkbox"
+          role="switch"
+          :aria-label="t('showCurrentGauntlet')"
+          :disabled="!gauntletAvailable"
+        />
+        <span class="mode-switch-track" aria-hidden="true"></span>
+      </label>
+      <span :class="{ 'arena-mode-label-active': gauntletOnly }">{{ t('currentGauntlet') }}</span>
     </div>
 
     <p v-if="loading" class="section-intro" role="status">
-      {{ gauntletOnly ? 'Loading the current Legendary Gauntlet...' : 'Loading sync pair navigation...' }}
+      {{ gauntletOnly ? t('loadingCurrentGauntlet') : t('loadingNavigation') }}
     </p>
     <div v-else-if="error" class="navigation-error" role="alert">
       <p>{{ error }}</p>
-      <button class="button-outline" type="button" @click="fetchNavigation">Try again <span aria-hidden="true">↻</span></button>
+      <button class="button-outline" type="button" @click="fetchNavigation">{{ t('tryAgain') }} <span aria-hidden="true">↻</span></button>
     </div>
     <p v-else-if="gauntletOnly && displayedArenas.length === 0" class="section-intro" role="status">
-      No arenas are currently in the Legendary Gauntlet.
+      {{ t('noCurrentArenas') }}
     </p>
     <p v-else-if="rows.length === 0" class="section-intro" role="status">
-      {{ gauntletOnly ? 'No sync pairs have solos in the current Gauntlet.' : 'No sync pairs are available.' }}
+      {{ gauntletOnly ? t('noCurrentSolos') : t('noSyncPairs') }}
     </p>
 
     <template v-else-if="!gauntletOnly || displayedArenas.length > 0">
+      <div       class="navigation-content"
+      :style="{ '--navigation-arena-width': `${displayedArenas.length * 84}px` }">
       <div class="navigation-controls">
         <label class="navigation-search">
           <span aria-hidden="true">⌕</span>
-          <input v-model="search" type="search" placeholder="Search sync pairs..." />
+          <input v-model="search" type="search" :placeholder="t('searchSyncPairs')" />
         </label>
         <label class="navigation-select">
-          <span>Sort by</span>
+          <span>{{ t('sortBy') }}</span>
           <select v-model="sortMode">
-            <option value="count">Number of solos</option>
-            <option value="name">Name (A–Z)</option>
-            <option value="japanese">Japanese name (A–Z)</option>
-            <option value="investment">Investment by arena</option>
+            <option value="count">{{ t('numberOfSolos') }}</option>
+            <option value="name">{{ t('englishNameSort') }}</option>
+            <option value="japanese">{{ t('japaneseNameSort') }}</option>
+            <option value="investment">{{ t('investmentByArena') }}</option>
           </select>
         </label>
         <label v-if="sortMode === 'investment'" class="navigation-select">
-          <span>Legendary</span>
+          <span>{{ t('legendary') }}</span>
           <select v-model="investmentArena">
-            <option v-for="arena in displayedArenas" :key="arena.slug" :value="arena.slug">{{ arena.name }}</option>
+            <option v-for="arena in displayedArenas" :key="arena.slug" :value="arena.slug">
+              {{ locale === 'ja' ? `${arena.japaneseName} · ${arena.name}` : `${arena.name} · ${arena.japaneseName}` }}
+            </option>
           </select>
         </label>
         <label v-if="sortMode === 'investment'" class="navigation-select">
-          <span>Order</span>
+          <span>{{ t('order') }}</span>
           <select v-model="investmentDirection">
-            <option value="least">Least invested first</option>
-            <option value="most">Most invested first</option>
+            <option value="least">{{ t('leastInvested') }}</option>
+            <option value="most">{{ t('mostInvested') }}</option>
           </select>
         </label>
       </div>
 
       <p class="navigation-intro">
-        Select an investment to find that sync pair's solo, or choose a legendary to browse all its runs.
+        {{ t('selectInvestmentHint') }}
       </p>
 
-      <div v-if="displayRows.length" class="navigation-grid-wrap" aria-label="Sync pair solos by legendary arena">
+      <div v-if="displayRows.length" class="navigation-grid-wrap" :aria-label="t('selectInvestmentHint')">
         <div class="navigation-grid navigation-grid-header" role="row">
-          <div class="navigation-pair-heading" role="columnheader">Sync pair</div>
+          <div class="navigation-pair-heading" role="columnheader">{{ t('syncPair') }}</div>
           <a
             v-for="arena in displayedArenas"
             :key="arena.slug"
             class="navigation-arena-heading"
             :style="{ '--arena-color': arena.color }"
             :href="arenaHref(arena.slug)"
-            :aria-label="`Browse ${arena.name} solos`"
+            :aria-label="t('browseArenaSolos', { arena: locale === 'ja' ? arena.japaneseName : arena.name })"
           >
             <img :src="getArenaIcon(arena)" alt="" />
-            <span>{{ arena.name }}</span>
+            <span class="navigation-arena-names">
+              <span :class="locale === 'en' ? 'name-primary' : 'name-secondary'">{{ arena.name }}</span>
+              <span :class="['navigation-arena-japanese', locale === 'ja' ? 'name-primary' : 'name-secondary']">{{ arena.japaneseName }}</span>
+            </span>
           </a>
         </div>
 
-        <div class="navigation-rows" tabindex="0" aria-label="Sync pair investments">
+        <div class="navigation-rows" tabindex="0" :aria-label="t('syncPair')">
           <div
             v-for="row in displayRows"
             :key="row.name"
@@ -248,10 +281,10 @@ onMounted(fetchNavigation)
               />
               <span v-else class="navigation-pair-fallback">{{ initials(row.name) }}</span>
               <span class="navigation-pair-copy">
-                <span class="navigation-pair-name">{{ row.name }}</span>
-                <span class="navigation-japanese">{{ row.japaneseName }}</span>
+                <span :class="['navigation-pair-name', locale === 'en' ? 'name-primary' : 'name-secondary']">{{ row.name }}</span>
+                <span :class="['navigation-japanese', locale === 'ja' ? 'name-primary' : 'name-secondary']">{{ row.japaneseName }}</span>
               </span>
-              <span class="navigation-solo-count" :aria-label="`${row.displayedSoloCount} solos`">{{ row.displayedSoloCount }}</span>
+              <span class="navigation-solo-count" :aria-label="t('soloCount', { count: soloCountFor(row) })">{{ soloCountFor(row) }}</span>
             </div>
             <div
               v-for="arena in displayedArenas"
@@ -263,15 +296,16 @@ onMounted(fetchNavigation)
                 v-if="row.upgrades[arena.slug]"
                 :class="upgradeClass(row.upgrades[arena.slug] ?? '')"
                 :href="arenaHref(arena.slug, row.name)"
-                :aria-label="`${row.name} on ${arena.name}: ${row.upgrades[arena.slug]}`"
-                :title="`${row.name} · ${arena.name} · ${row.upgrades[arena.slug]}`"
+                :aria-label="t('soloInvestment', { character: locale === 'ja' ? row.japaneseName : row.name, arena: locale === 'ja' ? arena.japaneseName : arena.name, investment: row.upgrades[arena.slug] ?? '' })"
+                :title="`${locale === 'ja' ? row.japaneseName : row.name} · ${locale === 'ja' ? arena.japaneseName : arena.name} · ${row.upgrades[arena.slug]}`"
               >{{ row.upgrades[arena.slug] }}</a>
               <span v-else class="navigation-no-run" aria-hidden="true">—</span>
             </div>
           </div>
         </div>
       </div>
-      <p v-else class="navigation-no-results" role="status">No sync pairs match “{{ search }}”.</p>
+      <p v-else class="navigation-no-results" role="status">{{ t('noSyncPairsMatch', { query: search }) }}</p>
+      </div>
     </template>
   </section>
 </template>

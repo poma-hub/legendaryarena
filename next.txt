@@ -1,0 +1,2 @@
+Les cellules vident de la navigation doivent quand même avoir une cellule, pas juste "—" aligné en haut
+Elargir les colonnes de la navigation de quelques px (assez pour 1 caractère japonais en plus sur une même ligne dans le nom d'un légendaire)

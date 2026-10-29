@@ -4,6 +4,7 @@ import DifficultyLegend from '../components/DifficultyLegend.vue'
 import SoloRow from '../components/SoloRow.vue'
 import { getArenaIcon, type Arena } from '../data/arenas'
 import { difficultyOptions } from '../data/markers'
+import { locale, markerText, t } from '../i18n'
 import { appPath } from '../routes'
 import { loadArenaSheet, type ArenaSheet, type Solo } from '../services/sheet'
 
@@ -21,12 +22,12 @@ const notRatedFilter = 'not-rated'
 
 const filteredSolos = computed(() => {
   if (!sheet.value) return []
-  const query = search.value.trim().toLocaleLowerCase()
+  const query = search.value.trim().normalize('NFKC').toLocaleLowerCase()
 
   return sheet.value.solos.filter((solo) => {
     const matchesSearch = !query ||
-      solo.name.toLocaleLowerCase().includes(query) ||
-      solo.japaneseName.toLocaleLowerCase().includes(query)
+      solo.name.normalize('NFKC').toLocaleLowerCase().includes(query) ||
+      solo.japaneseName.normalize('NFKC').toLocaleLowerCase().includes(query)
     const hasDifficulty = difficultyOptions.some((item) => solo.difficulties.includes(item.icon))
     const matchesDifficulty = selectedDifficulties.value.length === 0 ||
       difficultyOptions.some((item) =>
@@ -85,7 +86,7 @@ async function fetchSheet() {
     sheet.value = await loadArenaSheet(props.arena)
     await openSharedRun()
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : 'The arena data could not be loaded.'
+    error.value = cause instanceof Error ? cause.message : t('dataLoadError')
   } finally {
     loading.value = false
   }
@@ -118,24 +119,27 @@ watch(() => props.arena.gid, () => {
 
 <template>
   <div class="page-wrap detail-wrap">
-    <a class="back-link" :href="indexPath"><span aria-hidden="true">←</span> All arenas</a>
+    <a class="back-link" :href="indexPath"><span aria-hidden="true">←</span> {{ t('allArenas') }}</a>
 
     <section class="detail-hero" :style="{ '--arena-color': arena.color }">
       <div class="detail-copy">
-        <span class="eyebrow"><span class="eyebrow-dot"></span> LEGENDARY ARENA</span>
-        <h1>{{ arena.name }}</h1>
+        <span class="eyebrow"><span class="eyebrow-dot"></span> {{ t('legendaryArena') }}</span>
+        <h1>
+        <span :class="locale === 'en' ? 'name-primary' : 'name-secondary'">{{ arena.name }}</span>
+        <span :class="['detail-japanese-name', locale === 'ja' ? 'name-primary' : 'name-secondary']">{{ arena.japaneseName }}</span>
+        </h1>
         <div class="detail-count">
-          <strong v-if="sheet">{{ sheet.uniqueCount.toLocaleString('en-US') }}</strong>
+          <strong v-if="sheet">{{ sheet.uniqueCount.toLocaleString(locale === 'ja' ? 'ja-JP' : 'en-US') }}</strong>
           <span v-else-if="loading" class="count-loading">···</span>
           <strong v-else>—</strong>
-          <span>UNIQUE SYNC PAIRS<br />WITH A SOLO</span>
+          <span>{{ t('uniqueSyncPairs') }}</span>
         </div>
       </div>
       <div class="detail-art">
         <div class="detail-art-halo"></div>
         <img
           :src="getArenaIcon(arena)"
-          :alt="`${arena.name} icon`"
+          :alt="t('arenaIconAlt', { arena: locale === 'ja' ? arena.japaneseName : arena.name })"
         />
       </div>
       <span class="detail-number">LA / {{ String(arena.pokemonId).padStart(3, '0') }}</span>
@@ -144,40 +148,40 @@ watch(() => props.arena.gid, () => {
     <section class="solos-section" aria-labelledby="solos-heading">
       <div class="solos-heading-row">
         <div>
-          <h2 id="solos-heading">Solos</h2>
+          <h2 id="solos-heading">{{ t('solos') }}</h2>
         </div>
         <a
           class="sheet-link"
           :href="`https://docs.google.com/spreadsheets/d/1iDfxrZ9AMQCrSaZDuT0yripAln8QH1QQP9r0g56ANhI/edit?gid=${arena.gid}`"
           target="_blank"
           rel="noreferrer"
-        >Open source sheet <span aria-hidden="true">↗</span></a>
+        >{{ t('openSourceSheet') }} <span aria-hidden="true">↗</span></a>
       </div>
 
       <div class="filter-bar">
         <label class="search-box">
           <span class="search-icon" aria-hidden="true">⌕</span>
-          <input v-model="search" type="search" placeholder="Search a trainer in English or Japanese..." />
+          <input v-model="search" type="search" :placeholder="t('searchTrainer')" />
         </label>
         <button class="legend-toggle" type="button" @click="showLegend = !showLegend">
-          <span>◎</span> Difficulty guide <span class="toggle-chevron">{{ showLegend ? '−' : '+' }}</span>
+          <span>◎</span> {{ t('difficultyGuide') }} <span class="toggle-chevron">{{ showLegend ? '−' : '+' }}</span>
         </button>
       </div>
 
-      <div class="difficulty-filters" aria-label="Filter by difficulty">
+      <div class="difficulty-filters" :aria-label="t('difficulty')">
         <label
           v-for="item in difficultyOptions"
           :key="item.icon"
           class="filter-chip"
           :class="{ selected: selectedDifficulties.includes(item.icon) }"
-          :title="item.detail"
+          :title="markerText(item.detail)"
         >
           <input
             type="checkbox"
             :checked="selectedDifficulties.includes(item.icon)"
             @change="toggleDifficulty(item.icon)"
           />
-          <span>{{ item.icon }}</span>{{ item.label }}
+          <span>{{ item.icon }}</span>{{ markerText(item.label) }}
         </label>
         <label
           class="filter-chip"
@@ -188,7 +192,7 @@ watch(() => props.arena.gid, () => {
             :checked="selectedDifficulties.includes(notRatedFilter)"
             @change="toggleDifficulty(notRatedFilter)"
           />
-          Not rated
+          {{ t('notRated') }}
         </label>
       </div>
 
@@ -197,22 +201,22 @@ watch(() => props.arena.gid, () => {
       </div>
 
       <div class="results-line">
-        <span v-if="loading">LOADING RUNS…</span>
-        <span v-else-if="error">COULD NOT LOAD RUNS</span>
-        <span v-else>{{ filteredSolos.length.toLocaleString('en-US') }} RUN{{ filteredSolos.length === 1 ? '' : 'S' }} FOUND</span>
-        <span v-if="sheet && !loading" class="submission-count">{{ sheet.solos.length.toLocaleString('en-US') }} RUNS IN ARCHIVE</span>
+        <span v-if="loading">{{ t('loadingRuns') }}</span>
+        <span v-else-if="error">{{ t('couldNotLoadRuns') }}</span>
+        <span v-else>{{ t('runsFound', { count: filteredSolos.length.toLocaleString(locale === 'ja' ? 'ja-JP' : 'en-US'), plural: filteredSolos.length === 1 ? '' : 'S' }) }}</span>
+        <span v-if="sheet && !loading" class="submission-count">{{ t('runsInArchive', { count: sheet.solos.length.toLocaleString(locale === 'ja' ? 'ja-JP' : 'en-US') }) }}</span>
       </div>
 
       <div v-if="loading" class="state-panel">
         <div class="loader-orbit"></div>
-        <h3>Looking through the archive</h3>
-        <p>Fetching the latest {{ arena.name }} solo strategies.</p>
+        <h3>{{ t('lookingThroughArchive') }}</h3>
+        <p>{{ t('fetchingStrategies', { arena: locale === 'ja' ? arena.japaneseName : arena.name }) }}</p>
       </div>
       <div v-else-if="error" class="state-panel error-panel" role="alert">
         <span class="state-icon">!</span>
-        <h3>The archive is temporarily out of reach.</h3>
+        <h3>{{ t('archiveUnavailable') }}</h3>
         <p>{{ error }}</p>
-        <button class="button-outline" type="button" @click="fetchSheet">Try again <span aria-hidden="true">↻</span></button>
+        <button class="button-outline" type="button" @click="fetchSheet">{{ t('tryAgain') }} <span aria-hidden="true">↻</span></button>
       </div>
       <div v-else-if="filteredSolos.length" class="solo-list">
         <section v-for="group in groupedSolos" :key="group.name" class="solo-group">
@@ -247,17 +251,17 @@ watch(() => props.arena.gid, () => {
       </div>
       <div v-else class="state-panel empty-panel">
         <span class="state-icon">⌕</span>
-        <h3>No runs match those filters.</h3>
-        <p>Try another trainer name or select more difficulty levels.</p>
+        <h3>{{ t('noRunsMatch') }}</h3>
+        <p>{{ t('tryAnotherTrainer') }}</p>
         <button class="text-button" type="button" @click="search = ''; selectedDifficulties = []">
-          Clear all filters <span aria-hidden="true">↗</span>
+          {{ t('clearFilters') }} <span aria-hidden="true">↗</span>
         </button>
       </div>
 
       <div class="detail-contribute">
-        <p>Have a run that's not listed yet?</p>
+        <p>{{ t('runNotListed') }}</p>
         <a href="https://docs.google.com/forms/d/e/1FAIpQLSdJUCivOpeM_OgclKL047Qe8v1APWKbMq0_099lbensOtvwnw/viewform" target="_blank" rel="noreferrer">
-          Submit it <span aria-hidden="true">↗</span>
+          {{ t('submitIt') }} <span aria-hidden="true">↗</span>
         </a>
       </div>
     </section>

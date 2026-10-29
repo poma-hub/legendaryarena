@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { difficultyOptions, flagOptions } from '../data/markers'
 import { getSyncPairIconUrl } from '../data/sync-pair-icons'
+import { locale, markerText, t } from '../i18n'
 import type { Solo } from '../services/sheet'
 
 const props = defineProps<{
@@ -139,7 +140,7 @@ function flagsFor(solo: Solo) {
     :class="{ 'solo-row-expandable': expandable, 'solo-row-preview-open': previewExpanded }"
     :style="{ '--arena-color': color }"
     tabindex="0"
-    :aria-label="`Show grid and source for ${solo.name}`"
+    :aria-label="t('characterGridSource', { character: locale === 'ja' ? solo.japaneseName : solo.name })"
     :aria-expanded="Boolean(previewExpanded)"
     @click="handleRowClick"
     @keydown="handleRowKeydown"
@@ -155,11 +156,11 @@ function flagsFor(solo: Solo) {
     </div>
     <div class="solo-main">
       <div class="solo-name-line">
-        <h3>{{ solo.name }}</h3>
-        <span v-if="solo.japaneseName" class="japanese-name">{{ solo.japaneseName }}</span>
+        <h3 :class="locale === 'en' ? 'name-primary' : 'name-secondary'">{{ solo.name }}</h3>
+        <span v-if="solo.japaneseName" :class="['japanese-name', locale === 'ja' ? 'name-primary' : 'name-secondary']">{{ solo.japaneseName }}</span>
       </div>
       <div class="solo-meta">
-        <span class="build-chip">{{ solo.upgrades || 'Build not specified' }}</span>
+        <span class="build-chip">{{ solo.upgrades || t('buildUnspecified') }}</span>
         <span v-if="solo.level" class="meta-item">Lv. {{ solo.level }}</span>
         <span v-if="solo.luckySkill" class="meta-item"><span class="meta-icon">✦</span>{{ solo.luckySkill }}</span>
         <a
@@ -168,7 +169,7 @@ function flagsFor(solo: Solo) {
           :href="solo.gridUrl"
           target="_blank"
           rel="noreferrer"
-        >Grid ↗</a>
+        >{{ t('gridLink') }} ↗</a>
         <button
           v-if="expandable"
           class="solo-more-button"
@@ -176,7 +177,7 @@ function flagsFor(solo: Solo) {
           :aria-expanded="Boolean(expanded)"
           :aria-controls="`solo-group-${solo.id}-more`"
           @click.stop="emit('toggleExpanded')"
-        >{{ expanded ? 'Show fewer investments' : 'Show more investments' }}</button>
+        >{{ expanded ? t('showFewerInvestments') : t('showMoreInvestments') }}</button>
       </div>
       <p v-if="solo.advice" class="solo-advice">{{ solo.advice }}</p>
     </div>
@@ -185,16 +186,16 @@ function flagsFor(solo: Solo) {
         v-if="difficultyFor(solo)"
         class="difficulty-pill"
         :class="`tone-${difficultyFor(solo)?.tone}`"
-        :title="difficultyFor(solo)?.detail"
-      >{{ difficultyFor(solo)?.icon }} {{ difficultyFor(solo)?.label }}</span>
-      <span v-else class="difficulty-unrated">Not rated</span>
-      <div v-if="flagsFor(solo).length" class="run-flags" :aria-label="flagsFor(solo).map((flag) => flag.label).join(', ')">
-        <span v-for="flag in flagsFor(solo)" :key="flag.label" :title="flag.label">{{ flag.icon }}</span>
+        :title="markerText(difficultyFor(solo)?.detail ?? '')"
+      >{{ difficultyFor(solo)?.icon }} {{ markerText(difficultyFor(solo)?.label ?? '') }}</span>
+      <span v-else class="difficulty-unrated">{{ t('notRated') }}</span>
+      <div v-if="flagsFor(solo).length" class="run-flags" :aria-label="flagsFor(solo).map((flag) => markerText(flag.label)).join(', ')">
+        <span v-for="flag in flagsFor(solo)" :key="flag.label" :title="markerText(flag.label)">{{ flag.icon }}</span>
       </div>
     </div>
     <div class="solo-source">
-      <span>RECORDED BY</span>
-      <strong>{{ solo.source || 'Community' }}</strong>
+      <span>{{ t('recordedBy') }}</span>
+      <strong>{{ solo.source || t('community') }}</strong>
       <div class="solo-source-actions">
         <a
           v-if="solo.sourceUrls.length === 1"
@@ -202,7 +203,7 @@ function flagsFor(solo: Solo) {
           :href="solo.sourceUrls[0]"
           target="_blank"
           rel="noreferrer"
-        >Open source ↗</a>
+        >{{ t('openSource') }} ↗</a>
         <div v-else-if="solo.sourceUrls.length > 1" class="solo-source-actions">
           <a
             v-for="(url, index) in solo.sourceUrls"
@@ -211,7 +212,7 @@ function flagsFor(solo: Solo) {
             :href="url"
             target="_blank"
             rel="noreferrer"
-          >Part {{ index + 1 }} ↗</a>
+          >{{ t('part', { number: index + 1 }) }} ↗</a>
         </div>
         <a
           v-else-if="solo.grid"
@@ -219,7 +220,7 @@ function flagsFor(solo: Solo) {
           :href="`https://docs.google.com/spreadsheets/d/1iDfxrZ9AMQCrSaZDuT0yripAln8QH1QQP9r0g56ANhI/edit?gid=${gid}#gid=${gid}&range=A${solo.sheetRow}`"
           target="_blank"
           rel="noreferrer"
-        >Open source row ↗</a>
+        >{{ t('openSourceRow') }} ↗</a>
         <span
           v-if="shareUrl && (solo.sourceUrls.length || solo.grid)"
           class="solo-source-separator"
@@ -229,12 +230,12 @@ function flagsFor(solo: Solo) {
           v-if="shareUrl"
           class="solo-share-button"
           type="button"
-          :aria-label="`Share ${solo.name} run`"
+          :aria-label="`${t('shareRun')}: ${locale === 'ja' ? solo.japaneseName : solo.name}`"
           @click.stop="copyShareLink"
-        >{{ shareStatus === 'copied' ? 'Link copied' : 'Share run' }}</button>
+        >{{ shareStatus === 'copied' ? t('linkCopied') : t('shareRun') }}</button>
       </div>
       <span v-if="shareStatus === 'error'" class="solo-share-status" role="status">
-        Could not copy link
+        {{ t('couldNotCopyLink') }}
       </span>
     </div>
     <button
@@ -242,8 +243,8 @@ function flagsFor(solo: Solo) {
       type="button"
       :aria-expanded="Boolean(previewExpanded)"
       :aria-controls="`solo-preview-${solo.id}`"
-      :aria-label="previewExpanded ? `Hide grid and source for ${solo.name}` : `Show grid and source for ${solo.name}`"
-      :title="previewExpanded ? 'Hide grid and source' : 'Show grid and source'"
+      :aria-label="previewExpanded ? t('hideGridSource', { character: locale === 'ja' ? solo.japaneseName : solo.name }) : t('showGridSource', { character: locale === 'ja' ? solo.japaneseName : solo.name })"
+      :title="previewExpanded ? t('hideGridSourceTitle') : t('showGridSourceTitle')"
       @click.stop="emit('togglePreview')"
     >
       <span class="solo-preview-chevron" aria-hidden="true"></span>
@@ -254,28 +255,28 @@ function flagsFor(solo: Solo) {
     :id="`solo-preview-${solo.id}`"
     class="solo-preview"
     :style="{ '--arena-color': color }"
-    :aria-label="`${solo.name} grid and source`"
+    :aria-label="t('characterGridSource', { character: locale === 'ja' ? solo.japaneseName : solo.name })"
   >
     <div class="solo-preview-panel">
       <div class="solo-preview-heading">
-        <h4>Grid</h4>
-        <a v-if="solo.gridUrl" :href="solo.gridUrl" target="_blank" rel="noreferrer">Open in new tab ↗</a>
+        <h4>{{ t('grid') }}</h4>
+        <a v-if="solo.gridUrl" :href="solo.gridUrl" target="_blank" rel="noreferrer">{{ t('openNewTab') }} ↗</a>
       </div>
       <iframe
         v-if="gridEmbedUrl"
         :src="gridEmbedUrl"
-        :title="`${solo.name} grid`"
+        :title="`${locale === 'ja' ? solo.japaneseName : solo.name} ${t('grid')}`"
         loading="lazy"
         referrerpolicy="strict-origin-when-cross-origin"
         allowfullscreen
       ></iframe>
-      <p v-else class="solo-preview-empty">No grid link is available for this solo.</p>
+      <p v-else class="solo-preview-empty">{{ t('noGridAvailable') }}</p>
     </div>
     <div class="solo-preview-panel">
       <div class="solo-preview-heading">
         <div class="source-heading-label">
-          <h4>Source</h4>
-          <div v-if="sourceUrls.length > 1" class="source-part-tabs" role="tablist" aria-label="Source parts">
+          <h4>{{ t('source') }}</h4>
+          <div v-if="sourceUrls.length > 1" class="source-part-tabs" role="tablist" :aria-label="t('sourceParts')">
             <button
               v-for="(url, index) in sourceUrls"
               :key="url"
@@ -286,15 +287,15 @@ function flagsFor(solo: Solo) {
               :aria-selected="activeSourceIndex === index"
               :aria-controls="`source-panel-${solo.id}`"
               @click="activeSourceIndex = index"
-            >Part {{ index + 1 }}</button>
+            >{{ t('part', { number: index + 1 }) }}</button>
           </div>
         </div>
-        <a :href="selectedSourceUrl" target="_blank" rel="noreferrer">Open in new tab ↗</a>
+        <a :href="selectedSourceUrl" target="_blank" rel="noreferrer">{{ t('openNewTab') }} ↗</a>
       </div>
       <iframe
         :id="`source-panel-${solo.id}`"
         :src="sourceEmbedUrl"
-        :title="`${solo.name} source part ${activeSourceIndex + 1}`"
+        :title="`${locale === 'ja' ? solo.japaneseName : solo.name} · ${t('source')} ${t('part', { number: activeSourceIndex + 1 })}`"
         role="tabpanel"
         loading="lazy"
         referrerpolicy="strict-origin-when-cross-origin"

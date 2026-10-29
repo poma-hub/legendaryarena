@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { getArenaIcon, type Arena } from '../data/arenas'
+import { locale, t } from '../i18n'
 import { appPath } from '../routes'
 
 const props = defineProps<{ arena: Arena; index: number }>()
@@ -14,13 +15,16 @@ const props = defineProps<{ arena: Arena; index: number }>()
       <div class="art-halo"></div>
       <img
         :src="getArenaIcon(arena)"
-        :alt="`${arena.name} icon`"
+        :alt="t('arenaIconAlt', { arena: locale === 'ja' ? arena.japaneseName : arena.name })"
         loading="lazy"
       />
     </div>
     <div class="arena-card-bottom">
       <div>
-        <h3>{{ arena.name }}</h3>
+        <h3>
+          <span :class="locale === 'en' ? 'name-primary' : 'name-secondary'">{{ arena.name }}</span>
+          <span :class="['arena-card-japanese-name', locale === 'ja' ? 'name-primary' : 'name-secondary']">{{ arena.japaneseName }}</span>
+        </h3>
       </div>
       <span class="card-arrow" aria-hidden="true">↗</span>
     </div>
